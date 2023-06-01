@@ -414,7 +414,9 @@ void logic(Block canvas[CANVAS_HEIGHT][CANVAS_WIDTH], State* state)
     else if (FALL_FUNC()) {
         state->fallTime += FALL_DELAY * CANVAS_HEIGHT;
     }
-
+    //else if (HOLD_FUNC()) {
+        //state->
+    //}
     state->fallTime += RENDER_DELAY;
 
     while (state->fallTime >= FALL_DELAY) {
@@ -444,7 +446,17 @@ void logic(Block canvas[CANVAS_HEIGHT][CANVAS_WIDTH], State* state)
     }
     return;
 }
+void information() {
+    printf("\033[0;33m\n");
+    printf("\tUP to rotate\n");
+    printf("\tLEFT to move(left)\n");
+    printf("\tRIGHT to move(right)\n");
+    printf("\tDOWN to move(down more faster)\n");
+    printf("\tSPACE to move(fall directly)\n\n");
+    printf("\033[0;31m");
+    printf("\tPress space to continue");
 
+}
 int main()
 {
     srand(time(NULL));
@@ -474,10 +486,14 @@ int main()
     // printf("\e[?25l"); // hide cursor
 
     move(canvas, state.x, state.y, state.rotate, state.x, state.y, state.rotate, state.queue[0]);
-    //while (1)
-    //{
-        
-    //}
+    while (1)
+    {
+        information();
+        if (FALL_FUNC())
+            break;
+        Sleep(200);
+        system("cls");
+    }
     while (1)
     {
         logic(canvas, &state);

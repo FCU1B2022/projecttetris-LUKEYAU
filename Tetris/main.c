@@ -1,109 +1,220 @@
-#include <conio.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <time.h>
 #include <windows.h>
 
-#define MAP_WIDTH 20
-#define MAP_HEIGHT 10
-#define PLAYER_HEIGHT 3
+#define FALL_DELAY 500    // The delay between each fall, default = 500
+#define RENDER_DELAY 100  // The delay between each frame, default = 100
 
-enum Direction { UP, DOWN, LEFT, RIGHT };
+#define LEFT_FUNC() GetAsyncKeyState(0x25) & 0x8000
+#define RIGHT_FUNC() GetAsyncKeyState(0x27) & 0x8000
+#define ROTATE_FUNC() GetAsyncKeyState(0x26) & 0x8000
+#define DOWN_FUNC() GetAsyncKeyState(0x28) & 0x8000
+#define FALL_FUNC() GetAsyncKeyState(0x20) & 0x8000
+#define HOLD_FUNC() GetAsyncKeyState(0x48) & 0x8000    
 
-struct Player {
+
+#define CANVAS_WIDTH 10
+#define CANVAS_HEIGHT 20
+
+typedef enum {
+    RED = 41,
+    GREEN,
+    YELLOW,
+    BLUE,
+    PURPLE,
+    CYAN,
+    WHITE,
+    BLACK = 0,
+}Color;
+
+typedef enum {
+    EMPTY = -1,
+    I,
+    J,
+    L,
+    O,
+    S,
+    T,
+    Z
+}ShapeId;
+
+typedef struct {
+    ShapeId shape;
+    Color color;
+    int size;
+    char rotates[4][4][4];
+}Shape;
+
+typedef struct
+{
     int x;
     int y;
-};
+    int score;
+    int rotate;
+    int fallTime;
+    ShapeId queue[4];
+}State;
 
-struct Ball {
-    int x;
-    int y;
-    enum Direction vertical_direction;
-    enum Direction horizontal_direction;
-};
+typedef struct {
+    Color color;
+    ShapeId shape;
+    bool current;
+}Block;
 
-void gotoxy(int x, int y) {
-    COORD coord;
-    coord.X = x;
-    coord.Y = y;
-    SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), coord);
-}
-
-void drawMap() {
-    system("cls");
-    for (int i = 0; i < MAP_HEIGHT; i++) {
-        for (int j = 0; j < MAP_WIDTH; j++) {
-            if (j == 0 || j == MAP_WIDTH - 1) {
-                printf("\033[33m");
-                printf("|");
+Shape shapes[7] = {
+    {
+        .shape = I,
+        .color = CYAN,
+        .size = 4,
+        .rotates =
+        {
+            {
+                {0, 0, 0, 0},
+                {1, 1, 1, 1},
+                {0, 0, 0, 0},
+                {0, 0, 0, 0}
+            },
+            {
+                {0, 0, 1, 0},
+                {0, 0, 1, 0},
+                {0, 0, 1, 0},
+                {0, 0, 1, 0}
+            },
+            {
+                {0, 0, 0, 0},
+                {0, 0, 0, 0},
+                {1, 1, 1, 1},
+                {0, 0, 0, 0}
+            },
+            {
+                {0, 1, 0, 0},
+                {0, 1, 0, 0},
+                {0, 1, 0, 0},
+                {0, 1, 0, 0}
             }
-            else 
-                printf(" ");
         }
-        printf("\n");
-    }
-}
-
-void drawPlayer(struct Player* player) {
-    for (int i = 0; i < PLAYER_HEIGHT; i++) {
-        gotoxy(player->x, player->y + i);
-        printf("\033[31m");
-        printf("=");
-    }
-}
-
-void erasePlayer(struct Player* player) {
-    for (int i = 0; i < PLAYER_HEIGHT; i++) {
-        gotoxy(player->x, player->y + i);
-        printf(" ");
-    }
-}
-
-void movePlayer(struct Player* player, enum Direction direction) {
-    erasePlayer(player);
-
-    if (direction == UP && player->y > 0) 
-        player->y--;
-    else if (direction == DOWN && player->y < MAP_HEIGHT - PLAYER_HEIGHT) 
-        player->y++;
-
-    drawPlayer(player);
-}
-
-void drawBall(struct Ball* ball) {
-    gotoxy(ball->x, ball->y);
-    printf("\033[34m");
-    printf("O");
-}
-
-void eraseBall(struct Ball* ball) {
-    gotoxy(ball->x, ball->y);
-    printf(" ");
-}
-
-void moveBall(struct Ball* ball) {
-    eraseBall(ball);
-
-    if (ball->vertical_direction == UP && ball->y == 0) 
-        ball->vertical_direction = DOWN;
-    else if (ball->vertical_direction == DOWN && ball->y == MAP_HEIGHT - 1) 
-        ball->vertical_direction = UP;
-    else {
-        if (ball->vertical_direction == UP) 
-            ball->y--;
-        else if (ball->vertical_direction == DOWN) 
-            ball->y++;
-    }
-
-    if (ball->horizontal_direction == LEFT && ball->x == 0) 
-        ball->horizontal_direction = RIGHT;
-    else if (ball->horizontal_direction == RIGHT && ball->x == MAP_WIDTH - 1) 
-        ball->horizontal_direction = LEFT;
-    else {
-        if (ball->horizontal_direction == LEFT) 
-            ball->x--;
-        else if (ball->horizontal_direction == RIGHT) 
-            ball->x++;
-    }
+    },
+    {
+        .shape = J,
+        .color = BLUE,
+        .size = 3,
+        .rotates =
+        {
+            {
+                {1, 0, 0},
+                {1, 1, 1},
+                {0, 0, 0}
+            },
+            {
+                {0, 1, 1},
+                {0, 1, 0},
+                {0, 1, 0}
+            },
+            {
+                {0, 0, 0},
+                {1, 1, 1},
+                {0, 0, 1}
+            },
+            {
+                {0, 1, 0},
+                {0, 1, 0},
+                {1, 1, 0}
+            }
+        }
+    },
+    {
+        .shape = L,
+        .color = YELLOW,
+        .size = 3,
+        .rotates =
+        {
+            {
+                {0, 0, 1},
+                {1, 1, 1},
+                {0, 0, 0}
+            },
+            {
+                {0, 1, 0},
+                {0, 1, 0},
+                {0, 1, 1}
+            },
+            {
+                {0, 0, 0},
+                {1, 1, 1},
+                {1, 0, 0}
+            },
+            {
+                {1, 1, 0},
+                {0, 1, 0},
+                {0, 1, 0}
+            }
+        }
+    },
+    {
+        .shape = O,
+        .color = WHITE,
+        .size = 2,
+        .rotates =
+        {
+            {
+                {1, 1},
+                {1, 1}
+            },
+            {
+                {1, 1},
+                {1, 1}
+            },
+            {
+                {1, 1},
+                {1, 1}
+            },
+            {
+                {1, 1},
+                {1, 1}
+            }
+        }
+    },
+    {
+        .shape = S,
+        .color = GREEN,
+        .size = 3,
+        .rotates =
+        {
+            {
+                {0, 1, 1},
+                {1, 1, 0},
+                {0, 0, 0}
+            },
+            {
+                {0, 1, 0},
+                {0, 1, 1},
+                {0, 0, 1}
+            },
+            {
+                {0, 0, 0},
+                {0, 1, 1},
+                {1, 1, 0}
+            },
+            {
+                {1, 0, 0},
+                {1, 1, 0},
+                {0, 1, 0}
+            }
+        }
+    },
+    {
+        .shape = T,
+        .color = PURPLE,
+        .size = 3,
+        .rotates =
+        {
+            {
+                {0, 1, 0},
+                {1, 1, 1},
+                {0, 0, 0}
+            },
 
     drawBall(ball);
 }
@@ -136,50 +247,243 @@ void showIntroScreen() {
     printf("Player 2 controls: 'i' to move up, 'k' to move down\n");
     printf("ESC to Leave the game \nPress space to start the game...\n");
 
-    while (1) {
-        if (_kbhit()) {
-            char key = _getch();
-            if (key == ' ')
-                break;
-        }
-    }
+void setBlock(Block* block, Color color, ShapeId shape, bool current)
+{
+    block->color = color;
+    block->shape = shape;
+    block->current = current;
 }
 
-int main() {
-    struct Player player1 = { 1, 3 };
-    struct Player player2 = { MAP_WIDTH - 2, 3 };
-    struct Ball ball = { MAP_WIDTH / 2, MAP_HEIGHT / 2, UP, LEFT };
+void resetBlock(Block* block)
+{
+    block->color = BLACK;
+    block->shape = EMPTY;
+    block->current = false;
+}
 
-    showIntroScreen();
+bool move(Block canvas[CANVAS_HEIGHT][CANVAS_WIDTH], int originalX, int originalY, int originalRotate, int newX, int newY, int newRotate, ShapeId shapeId) {
+    Shape shapeData = shapes[shapeId];
+    int size = shapeData.size;
 
-    drawMap();
-    drawPlayer(&player1);
-    drawPlayer(&player2);
-    drawBall(&ball);
-
-    while (1) {
-        if (_kbhit()) {
-            char key = _getch();
-            if (key == 'w')
-                movePlayer(&player1, UP);
-            else if (key == 's')
-                movePlayer(&player1, DOWN);
-            else if (key == 'i')
-                movePlayer(&player2, UP);
-            else if (key == 'k')
-                movePlayer(&player2, DOWN);
+    // check if the new position is valid to place the block
+    for (int i = 0; i < size; i++) {
+        for (int j = 0; j < size; j++) {
+            if (shapeData.rotates[newRotate][i][j]) {
+                if (newX + j < 0 || newX + j >= CANVAS_WIDTH || newY + i < 0 || newY + i >= CANVAS_HEIGHT) {
+                    return false;
+                }
+                if (!canvas[newY + i][newX + j].current && canvas[newY + i][newX + j].shape != EMPTY) {
+                    return false;
+                }
+            }
         }
-
-        moveBall(&ball);
-
-        if (ball.x == 0 || ball.x == MAP_WIDTH - 1) {
-            printf("\033[37m\nGame Over\n");
-            break;
-        }
-        if (checkCollision(&ball, &player1) || checkCollision2(&ball, &player2))
-            continue;
-        Sleep(200);
     }
 
-    return 0;
+    // remove the old position
+    for (int i = 0; i < size; i++) {
+        for (int j = 0; j < size; j++) {
+            if (shapeData.rotates[originalRotate][i][j]) {
+                resetBlock(&canvas[originalY + i][originalX + j]);
+            }
+        }
+    }
+
+    // move the block
+    for (int i = 0; i < size; i++) {
+        for (int j = 0; j < size; j++) {
+            if (shapeData.rotates[newRotate][i][j]) {
+                setBlock(&canvas[newY + i][newX + j], shapeData.color, shapeId, true);
+            }
+        }
+    }
+
+    return true;
+}
+
+void printCanvas(Block canvas[CANVAS_HEIGHT][CANVAS_WIDTH], State* state)
+{
+    printf("\033[0;0H\n");
+    for (int i = 0; i < CANVAS_HEIGHT; i++) {
+        printf("|");
+        for (int j = 0; j < CANVAS_WIDTH; j++) {
+            printf("\033[%dm\u3000", canvas[i][j].color);
+        }
+        printf("\033[0m|\n");
+    }
+
+    Shape shapeData = shapes[state->queue[1]];
+    printf("\033[%d;%dHNext:", 3, CANVAS_WIDTH * 2 + 5);
+    for (int i = 1; i <= 3; i++)
+    {
+        shapeData = shapes[state->queue[i]];
+        for (int j = 0; j < 4; j++) {
+            printf("\033[%d;%dH", i * 4 + j, CANVAS_WIDTH * 2 + 15);
+            for (int k = 0; k < 4; k++) {
+                if (j < shapeData.size && k < shapeData.size && shapeData.rotates[0][j][k]) {
+                    printf("\x1b[%dm  ", shapeData.color);
+                }
+                else {
+                    printf("\x1b[0m  ");
+                }
+            }
+        }
+    }
+    return;
+}
+
+int clearLine(Block canvas[CANVAS_HEIGHT][CANVAS_WIDTH]) {
+    for (int i = 0; i < CANVAS_HEIGHT; i++) {
+        for (int j = 0; j < CANVAS_WIDTH; j++) {
+            if (canvas[i][j].current) {
+                canvas[i][j].current = false;
+            }
+        }
+    }
+
+    int linesCleared = 0;
+
+    for (int i = CANVAS_HEIGHT - 1; i >= 0; i--)
+    {
+        bool isFull = true;
+        for (int j = 0; j < CANVAS_WIDTH; j++)
+        {
+            if (canvas[i][j].shape == EMPTY) {
+                isFull = false;
+                break;
+            }
+        }
+
+        if (isFull) {
+            linesCleared += 1;
+
+            for (int j = i; j > 0; j--)
+            {
+                for (int k = 0; k < CANVAS_WIDTH; k++)
+                {
+                    setBlock(&canvas[j][k], canvas[j - 1][k].color, canvas[j - 1][k].shape, false);
+                    resetBlock(&canvas[j - 1][k]);
+                }
+            }
+            i++;
+        }
+    }
+
+
+    return linesCleared;
+}
+
+void logic(Block canvas[CANVAS_HEIGHT][CANVAS_WIDTH], State* state)
+{
+    if (ROTATE_FUNC()) {
+        int newRotate = (state->rotate + 1) % 4;
+        if (move(canvas, state->x, state->y, state->rotate, state->x, state->y, newRotate, state->queue[0]))
+        {
+            state->rotate = newRotate;
+        }
+    }
+    else if (LEFT_FUNC()) {
+        if (move(canvas, state->x, state->y, state->rotate, state->x - 1, state->y, state->rotate, state->queue[0]))
+        {
+            state->x -= 1;
+        }
+    }
+    else if (RIGHT_FUNC()) {
+        if (move(canvas, state->x, state->y, state->rotate, state->x + 1, state->y, state->rotate, state->queue[0]))
+        {
+            state->x += 1;
+        }
+    }
+    else if (DOWN_FUNC()) {
+        state->fallTime = FALL_DELAY;
+    }
+    else if (FALL_FUNC()) {
+        state->fallTime += FALL_DELAY * CANVAS_HEIGHT;
+    }
+    //else if (HOLD_FUNC()) {
+        //state->
+    //}
+    state->fallTime += RENDER_DELAY;
+
+    while (state->fallTime >= FALL_DELAY) {
+        state->fallTime -= FALL_DELAY;
+
+        if (move(canvas, state->x, state->y, state->rotate, state->x, state->y + 1, state->rotate, state->queue[0])) {
+            state->y++;
+        }
+        else {
+            state->score += clearLine(canvas);
+
+            state->x = CANVAS_WIDTH / 2;
+            state->y = 0;
+            state->rotate = 0;
+            state->fallTime = 0;
+            state->queue[0] = state->queue[1];
+            state->queue[1] = state->queue[2];
+            state->queue[2] = state->queue[3];
+            state->queue[3] = rand() % 7;
+
+            if (!move(canvas, state->x, state->y, state->rotate, state->x, state->y, state->rotate, state->queue[0]))
+            {
+                printf("\033[%d;%dH\x1b[41m GAME OVER \x1b[0m\033[%d;%dH", CANVAS_HEIGHT - 3, CANVAS_WIDTH * 2 + 5, CANVAS_HEIGHT + 5, 0);
+                exit(0);
+            }
+        }
+    }
+    return;
+}
+void information() {
+    printf("\033[0;33m\n");
+    printf("\tUP to rotate\n");
+    printf("\tLEFT to move(left)\n");
+    printf("\tRIGHT to move(right)\n");
+    printf("\tDOWN to move(down more faster)\n");
+    printf("\tSPACE to move(fall directly)\n\n");
+    printf("\033[0;31m");
+    printf("\tPress space to continue");
+
+}
+int main()
+{
+    srand(time(NULL));
+    State state = {
+        .x = CANVAS_WIDTH / 2,
+        .y = 0,
+        .score = 0,
+        .rotate = 0,
+        .fallTime = 0
+    };
+
+    for (int i = 0; i < 4; i++)
+    {
+        state.queue[i] = rand() % 7;
+    }
+
+    Block canvas[CANVAS_HEIGHT][CANVAS_WIDTH];
+    for (int i = 0; i < CANVAS_HEIGHT; i++)
+    {
+        for (int j = 0; j < CANVAS_WIDTH; j++)
+        {
+            resetBlock(&canvas[i][j]);
+        }
+    }
+
+    system("cls");
+    // printf("\e[?25l"); // hide cursor
+
+    move(canvas, state.x, state.y, state.rotate, state.x, state.y, state.rotate, state.queue[0]);
+    while (1)
+    {
+        information();
+        if (FALL_FUNC())
+            break;
+        Sleep(200);
+        system("cls");
+    }
+    while (1)
+    {
+        logic(canvas, &state);
+        printCanvas(canvas, &state);
+        Sleep(100);
+    }
+
 }
